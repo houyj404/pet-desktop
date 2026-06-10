@@ -1,0 +1,147 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>桌面小宠物</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- ═══ Pet Container (always visible) ═══ -->
+  <div id="pet-area">
+    <!-- Speech Bubble -->
+    <div id="bubble" class="hidden"><span id="bubble-text"></span></div>
+
+    <!-- Status Icon -->
+    <div id="status-icon" class="hidden"></div>
+
+    <!-- Cat Character -->
+    <div id="cat" class="state-idle">
+      <div class="ears">
+        <div class="ear left"><div class="inner"></div></div>
+        <div class="ear right"><div class="inner"></div></div>
+      </div>
+      <div class="head">
+        <div class="face">
+          <div class="eye left"><div class="pupil"></div></div>
+          <div class="eye right"><div class="pupil"></div></div>
+          <div class="nose"></div>
+          <div class="mouth"></div>
+        </div>
+        <div class="whiskers left">
+          <div class="w top"></div><div class="w mid"></div><div class="w bot"></div>
+        </div>
+        <div class="whiskers right">
+          <div class="w top"></div><div class="w mid"></div><div class="w bot"></div>
+        </div>
+      </div>
+      <div class="body">
+        <div class="paw left"></div>
+        <div class="paw right"></div>
+      </div>
+      <div class="tail"></div>
+      <!-- Zzz for sleeping -->
+      <div class="zzz hidden">
+        <span class="z z1">Z</span><span class="z z2">z</span><span class="z z3">z</span>
+      </div>
+      <!-- Sparkles for happy -->
+      <div class="sparkles hidden">
+        <span class="sp s1">✦</span><span class="sp s2">✧</span>
+        <span class="sp s3">✦</span><span class="sp s4">✧</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Task Hover Popup ═══ -->
+  <div id="task-popup" class="hidden">
+    <div class="popup-title">📋 待办事项</div>
+    <ul id="popup-task-list"></ul>
+    <div class="popup-actions">
+      <button id="btn-quick-add">+ 添加</button>
+      <button id="btn-view-all">全部</button>
+    </div>
+  </div>
+
+  <!-- ═══ Task Management Modal ═══ -->
+  <div id="task-modal" class="overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><span>📋 我的任务</span><button class="close-btn" data-close="task-modal">&times;</button></div>
+      <div class="modal-tabs">
+        <button class="tab active" data-filter="pending">未完成</button>
+        <button class="tab" data-filter="completed">已完成</button>
+        <button class="tab" data-filter="all">全部</button>
+      </div>
+      <div id="task-list" class="modal-scroll"></div>
+      <div class="modal-foot">
+        <button id="btn-add-task">+ 添加任务</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Add Task Modal ═══ -->
+  <div id="add-modal" class="overlay hidden">
+    <div class="modal modal-sm">
+      <div class="modal-head"><span>✨ 添加任务</span><button class="close-btn" data-close="add-modal">&times;</button></div>
+      <div class="modal-body">
+        <label>任务名称 *</label>
+        <input id="inp-title" type="text" placeholder="交周报">
+        <label>截止时间 *</label>
+        <input id="inp-due" type="datetime-local">
+        <label>备注</label>
+        <textarea id="inp-desc" rows="2" placeholder="可选"></textarea>
+        <label>提前提醒</label>
+        <select id="inp-remind">
+          <option value="5">5 分钟</option>
+          <option value="15" selected>15 分钟</option>
+          <option value="30">30 分钟</option>
+          <option value="60">1 小时</option>
+        </select>
+      </div>
+      <div class="modal-foot">
+        <button data-close="add-modal">取消</button>
+        <button id="btn-save" class="primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Settings Modal ═══ -->
+  <div id="settings-modal" class="overlay hidden">
+    <div class="modal">
+      <div class="modal-head"><span>⚙️ 设置</span><button class="close-btn" data-close="settings-modal">&times;</button></div>
+      <div class="modal-tabs">
+        <button class="stab active" data-panel="s-general">常规</button>
+        <button class="stab" data-panel="s-reminder">提醒</button>
+        <button class="stab" data-panel="s-pet">宠物</button>
+      </div>
+      <div id="s-general" class="spanel">
+        <div class="srow"><span>开机自启动</span><label class="switch"><input type="checkbox" id="set-autostart"><span class="slider"></span></label></div>
+        <div class="srow"><span>贴边吸附</span><label class="switch"><input type="checkbox" id="set-edgesnap" checked><span class="slider"></span></label></div>
+        <div class="srow"><span>透明度</span><input type="range" id="set-opacity" min="30" max="100" value="100"></div>
+      </div>
+      <div id="s-reminder" class="spanel hidden">
+        <div class="srow"><span>整点提醒</span><label class="switch"><input type="checkbox" id="set-hourly" checked><span class="slider"></span></label></div>
+        <div class="srow"><span>开始时间</span><input type="number" id="set-h-start" min="0" max="23" value="7" class="num-input"></div>
+        <div class="srow"><span>结束时间</span><input type="number" id="set-h-end" min="0" max="23" value="22" class="num-input"></div>
+      </div>
+      <div id="s-pet" class="spanel hidden">
+        <div class="srow"><span>语音</span><label class="switch"><input type="checkbox" id="set-voice" checked><span class="slider"></span></label></div>
+        <div class="srow"><span>音量</span><input type="range" id="set-volume" min="0" max="100" value="80"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Context Menu ═══ -->
+  <div id="ctx-menu" class="hidden">
+    <div class="ctx-item" data-act="add">📋 添加任务</div>
+    <div class="ctx-item" data-act="list">📅 查看全部任务</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" data-act="rest">😴 休息模式</div>
+    <div class="ctx-item" data-act="mute">🔇 静音</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" data-act="settings">⚙️ 设置</div>
+    <div class="ctx-item" data-act="exit">🚪 退出</div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

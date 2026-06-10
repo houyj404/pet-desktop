@@ -1,0 +1,22 @@
+[package]
+name = "pet-desktop"
+version = "0.1.0"
+edition = "2021"
+description = "桌面小宠物 - 陪伴感桌面助手"
+
+[lib]
+name = "pet_desktop_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["unstable"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+chrono = { version = "0.4", features = ["serde"] }
+log = "0.4"
+env_logger = "0.11"
+tokio = { version = "1", features = ["full"] }
