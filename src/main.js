@@ -4,7 +4,7 @@
 // ══════════════════════════════════════════════════════════════
 
 import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -18,7 +18,60 @@ const app = {
   idleTimer: null,
   isSleeping: false,
   popupTimer: null,
+  windowExpanded: false,
 };
+
+// ── 窗口缩放 ─────────────────────────────────────────────────
+const PET_WIDTH = 200;
+const PET_HEIGHT = 240;
+
+async function expandWindow() {
+  if (app.windowExpanded) return;
+  app.windowExpanded = true;
+  try {
+    const win = getCurrentWindow();
+    // 获取屏幕尺寸，使用足够大的窗口覆盖屏幕
+    const monitor = await win.currentMonitor();
+    const size = monitor ? monitor.size : { width: 1920, height: 1080 };
+    const scale = monitor ? monitor.scaleFactor : 1;
+    const w = Math.ceil(size.width / scale);
+    const h = Math.ceil(size.height / scale);
+    // 记录旧位置用于恢复后定位
+    const pos = await win.outerPosition();
+    app._savedPos = pos;
+    app._savedW = PET_WIDTH;
+    app._savedH = PET_HEIGHT;
+    // 移到 (0,0) 并扩大到全屏
+    await win.setPosition(new LogicalPosition(0, 0));
+    await win.setSize(new LogicalSize(w, h));
+  } catch (e) {
+    console.warn('expandWindow failed:', e);
+  }
+}
+
+async function restoreWindow() {
+  if (!app.windowExpanded) return;
+  app.windowExpanded = false;
+  try {
+    const win = getCurrentWindow();
+    await win.setSize(new LogicalSize(PET_WIDTH, PET_HEIGHT));
+    // 恢复到屏幕右下角
+    const monitor = await win.currentMonitor();
+    if (monitor) {
+      const sw = Math.ceil(monitor.size.width / monitor.scaleFactor);
+      const sh = Math.ceil(monitor.size.height / monitor.scaleFactor);
+      await win.setPosition(new LogicalPosition(sw - PET_WIDTH - 20, sh - PET_HEIGHT - 40));
+    }
+  } catch (e) {
+    console.warn('restoreWindow failed:', e);
+  }
+}
+
+function isAnyModalOpen() {
+  return !DOM.taskModal.classList.contains('hidden')
+    || !DOM.addModal.classList.contains('hidden')
+    || !DOM.settingsModal.classList.contains('hidden');
+}
 
 let settings = {
   voice_enabled: 'true',
@@ -313,7 +366,8 @@ function bindPopupEvents() {
 // 5. 任务管理弹窗
 // ═══════════════════════════════════════════════════════════════
 
-function openTaskModal() {
+async function openTaskModal() {
+  await expandWindow();
   DOM.taskModal.classList.remove('hidden');
   loadTaskList(app.currentFilter);
 }
@@ -416,7 +470,8 @@ function bindTaskModalEvents() {
 // 6. 添加任务弹窗
 // ═══════════════════════════════════════════════════════════════
 
-function openAddModal() {
+async function openAddModal() {
+  await expandWindow();
   // 预设截止时间为当前时间 +1 小时（取整）
   const now = new Date();
   now.setHours(now.getHours() + 1);
@@ -465,6 +520,7 @@ async function saveTask() {
       voiceEnabled: settings.voice_enabled === 'true',
     });
     DOM.addModal.classList.add('hidden');
+    if (!isAnyModalOpen()) restoreWindow();
     showBubble(`收到新任务: ${title}`, 3000);
     // 刷新任务列表（如果打开的话）
     if (!DOM.taskModal.classList.contains('hidden')) {
@@ -517,6 +573,7 @@ function bindModalClose() {
     const closeTarget = e.target.dataset.close;
     if (closeTarget) {
       $(`#${closeTarget}`).classList.add('hidden');
+      if (!isAnyModalOpen()) restoreWindow();
     }
   });
 
@@ -524,6 +581,7 @@ function bindModalClose() {
   document.addEventListener('click', (e) => {
     if (e.target.classList.contains('overlay')) {
       e.target.classList.add('hidden');
+      if (!isAnyModalOpen()) restoreWindow();
     }
   });
 }
@@ -571,6 +629,7 @@ async function handleCtxAction(act) {
       toggleMute();
       break;
     case 'settings':
+      await expandWindow();
       DOM.settingsModal.classList.remove('hidden');
       await loadSettings();
       break;

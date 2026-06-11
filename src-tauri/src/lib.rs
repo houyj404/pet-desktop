@@ -6,7 +6,7 @@ pub mod tts;
 
 use db::DbState;
 use state_machine::PetStateMachine;
-use tauri::Manager;
+use tauri::Manager; // needed for app.state()
 
 pub fn run() {
     tauri::Builder::default()
