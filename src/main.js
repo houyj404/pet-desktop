@@ -19,31 +19,53 @@ const app = {
   isSleeping: false,
   popupTimer: null,
   windowExpanded: false,
+  clickThrough: true,
+  _savedPos: null,
+  _savedSize: null,
 };
 
 // ── 窗口缩放 ─────────────────────────────────────────────────
-const PET_WIDTH = 200;
-const PET_HEIGHT = 240;
+const PET_WIDTH = 260;
+const PET_HEIGHT = 360;
+const EXPANDED_WIDTH = 500;
+const EXPANDED_HEIGHT = 520;
+
+async function setClickThrough(enabled) {
+  app.clickThrough = enabled;
+  try {
+    await getCurrentWindow().setIgnoreCursorEvents(enabled);
+  } catch (e) {
+    console.warn('setIgnoreCursorEvents failed:', e);
+  }
+}
 
 async function expandWindow() {
   if (app.windowExpanded) return;
   app.windowExpanded = true;
   try {
+    // 关闭穿透，让弹窗可交互
+    await setClickThrough(false);
+    // 等待一帧使设置生效
+    await new Promise((r) => requestAnimationFrame(r));
+
     const win = getCurrentWindow();
-    // 获取屏幕尺寸，使用足够大的窗口覆盖屏幕
-    const monitor = await win.currentMonitor();
-    const size = monitor ? monitor.size : { width: 1920, height: 1080 };
-    const scale = monitor ? monitor.scaleFactor : 1;
-    const w = Math.ceil(size.width / scale);
-    const h = Math.ceil(size.height / scale);
-    // 记录旧位置用于恢复后定位
     const pos = await win.outerPosition();
+    const size = await win.outerSize();
     app._savedPos = pos;
-    app._savedW = PET_WIDTH;
-    app._savedH = PET_HEIGHT;
-    // 移到 (0,0) 并扩大到全屏
-    await win.setPosition(new LogicalPosition(0, 0));
-    await win.setSize(new LogicalSize(w, h));
+    app._savedSize = size;
+
+    const monitor = await win.currentMonitor();
+    if (monitor) {
+      const scale = monitor.scaleFactor || 1;
+      const sw = Math.ceil(monitor.size.width / scale);
+      const sh = Math.ceil(monitor.size.height / scale);
+      // 窗口右下角对齐屏幕右下角
+      const x = sw - EXPANDED_WIDTH;
+      const y = sh - EXPANDED_HEIGHT;
+      await win.setPosition(new LogicalPosition(x, y));
+    }
+    await win.setSize(new LogicalSize(EXPANDED_WIDTH, EXPANDED_HEIGHT));
+    document.body.classList.add('modal-mode');
   } catch (e) {
     console.warn('expandWindow failed:', e);
   }
@@ -54,13 +76,18 @@ async function restoreWindow() {
   app.windowExpanded = false;
   try {
     const win = getCurrentWindow();
+    document.body.classList.remove('modal-mode');
     await win.setSize(new LogicalSize(PET_WIDTH, PET_HEIGHT));
-    // 恢复到屏幕右下角
     const monitor = await win.currentMonitor();
     if (monitor) {
-      const sw = Math.ceil(monitor.size.width / monitor.scaleFactor);
-      const sh = Math.ceil(monitor.size.height / monitor.scaleFactor);
+      const scale = monitor.scaleFactor || 1;
+      const sw = Math.ceil(monitor.size.width / scale);
+      const sh = Math.ceil(monitor.size.height / scale);
       await win.setPosition(new LogicalPosition(sw - PET_WIDTH - 20, sh - PET_HEIGHT - 40));
+    }
+    // 无弹窗时恢复穿透
+    if (!isAnyModalOpen() && DOM.ctxMenu.classList.contains('hidden')) {
+      await setClickThrough(true);
     }
   } catch (e) {
     console.warn('restoreWindow failed:', e);
@@ -324,40 +351,7 @@ function escapeHtml(s) {
 }
 
 function bindPopupEvents() {
-  let hoverTimer = null;
-
-  DOM.cat.addEventListener('mouseenter', () => {
-    hoverTimer = setTimeout(async () => {
-      await loadPopupTasks();
-      DOM.taskPopup.classList.remove('hidden');
-    }, 300);
-  });
-
-  DOM.cat.addEventListener('mouseleave', () => {
-    clearTimeout(hoverTimer);
-    // 延迟隐藏，让鼠标可以移到弹窗上
-    app.popupTimer = setTimeout(() => {
-      DOM.taskPopup.classList.add('hidden');
-    }, 200);
-  });
-
-  DOM.taskPopup.addEventListener('mouseenter', () => {
-    clearTimeout(app.popupTimer);
-  });
-
-  DOM.taskPopup.addEventListener('mouseleave', () => {
-    DOM.taskPopup.classList.add('hidden');
-  });
-
-  DOM.btnQuickAdd.addEventListener('click', () => {
-    DOM.taskPopup.classList.add('hidden');
-    openAddModal();
-  });
-
-  DOM.btnViewAll.addEventListener('click', () => {
-    DOM.taskPopup.classList.add('hidden');
-    openTaskModal();
-  });
+  // 由 bindContextMenu 统一管理 hover 和穿透
 }
 
 // buildPopupHtml removed — using DOM popup rendering
@@ -591,17 +585,80 @@ function bindModalClose() {
 // ═══════════════════════════════════════════════════════════════
 
 function bindContextMenu() {
-  // 右键显示菜单
-  DOM.petArea.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    DOM.ctxMenu.style.left = `${e.clientX}px`;
-    DOM.ctxMenu.style.top = `${e.clientY}px`;
-    DOM.ctxMenu.classList.remove('hidden');
+  let hoverTimer = null;
+
+  // ── 猫咪悬浮任务弹窗 ─────────────────────────────
+  DOM.cat.addEventListener('mouseenter', () => {
+    if (app.windowExpanded) return;
+    setClickThrough(false);
+    hoverTimer = setTimeout(async () => {
+      await loadPopupTasks();
+      DOM.taskPopup.classList.remove('hidden');
+    }, 300);
   });
 
-  // 点击其他地方关闭菜单
+  DOM.cat.addEventListener('mouseleave', () => {
+    clearTimeout(hoverTimer);
+    app.popupTimer = setTimeout(() => {
+      DOM.taskPopup.classList.add('hidden');
+      scheduleReenableThrough();
+    }, 200);
+  });
+
+  DOM.taskPopup.addEventListener('mouseenter', () => {
+    clearTimeout(app.popupTimer);
+    setClickThrough(false);
+  });
+
+  DOM.taskPopup.addEventListener('mouseleave', () => {
+    DOM.taskPopup.classList.add('hidden');
+    scheduleReenableThrough();
+  });
+
+  DOM.btnQuickAdd.addEventListener('click', () => {
+    DOM.taskPopup.classList.add('hidden');
+    openAddModal();
+  });
+
+  DOM.btnViewAll.addEventListener('click', () => {
+    DOM.taskPopup.classList.add('hidden');
+    openTaskModal();
+  });
+
+  // ── 穿透重新启用（防抖） ─────────────────────────
+  function scheduleReenableThrough() {
+    if (app.windowExpanded) return;
+    if (!DOM.ctxMenu.classList.contains('hidden')) return;
+    if (!DOM.taskPopup.classList.contains('hidden')) return;
+    setTimeout(() => {
+      if (!app.windowExpanded
+        && DOM.ctxMenu.classList.contains('hidden')
+        && DOM.taskPopup.classList.contains('hidden')) {
+        setClickThrough(true);
+      }
+    }, 100);
+  }
+
+  // ── 右键菜单 — 向左上方弹出，避免遮挡猫咪 ───────
+  DOM.petArea.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    setClickThrough(false);
+    DOM.ctxMenu.style.left = '0px';
+    DOM.ctxMenu.style.top = '0px';
+    DOM.ctxMenu.classList.remove('hidden');
+    const rect = DOM.ctxMenu.getBoundingClientRect();
+    let x = e.clientX - rect.width - 4;
+    if (x < 4) x = 4;
+    let y = e.clientY - rect.height;
+    if (y < 4) y = 4;
+    DOM.ctxMenu.style.left = `${x}px`;
+    DOM.ctxMenu.style.top = `${y}px`;
+  });
+
   document.addEventListener('click', () => {
+    if (DOM.ctxMenu.classList.contains('hidden')) return;
     DOM.ctxMenu.classList.add('hidden');
+    scheduleReenableThrough();
   });
 
   // 菜单项处理
@@ -861,6 +918,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindCatInteractions();
   bindDrag();
   bindSettingsControls();
+
+  // 启动穿透模式（透明区域点击穿透到桌面）
+  await setClickThrough(true);
 
   // 加载数据
   await loadSettings();

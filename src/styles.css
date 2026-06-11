@@ -24,14 +24,17 @@ body {
 
 .hidden { display: none !important; }
 
+/* ── Modal mode: marker for JS to track window state ── */
+body.modal-mode { /* expanded window with modal open */ }
+
 /* ═══════════════════════════════════════════════
    PET AREA — positioned bottom-right of window
    ═══════════════════════════════════════════════ */
 
 #pet-area {
   position: fixed;
-  bottom: 8px;
-  right: 8px;
+  bottom: 12px;
+  right: 30px;
   width: 120px;
   height: 160px;
   display: flex;
@@ -40,6 +43,7 @@ body {
   justify-content: flex-end;
   overflow: visible;
   background: transparent;
+  z-index: 490;
 }
 
 /* ── Speech Bubble ─────────────────────────── */
@@ -53,8 +57,8 @@ body {
   font-size: 12px;
   color: var(--text);
   box-shadow: var(--shadow);
-  white-space: nowrap;
-  max-width: 200px;
+  white-space: normal;
+  max-width: 120px;
   text-align: center;
   z-index: 100;
   animation: bubble-in 0.3s ease;
@@ -477,7 +481,7 @@ body {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.25);
+  background: rgba(0,0,0,0.45);
   display: flex;
   align-items: center;
   justify-content: center;
