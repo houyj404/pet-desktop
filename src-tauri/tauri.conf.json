@@ -4,23 +4,23 @@
   "identifier": "com.pet.desktop",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420"
+    "devUrl": "http://localhost:1421"
   },
   "app": {
     "windows": [
       {
         "label": "main",
         "title": "桌面小宠物",
-        "width": 260,
-        "height": 360,
+        "width": 140,
+        "height": 180,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
         "resizable": false,
         "skipTaskbar": true,
         "visible": true,
-        "x": 1580,
-        "y": 760
+        "x": 1760,
+        "y": 860
       }
     ],
     "security": {
