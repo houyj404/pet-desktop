@@ -1,6 +1,7 @@
 use crate::db::{DbState, Setting, Task};
 use crate::state_machine::{PetStateMachine, PetStateInfo, StateEvent};
 use crate::tts;
+use crate::hit_test;
 use log::info;
 use tauri::Manager;
 
@@ -133,6 +134,18 @@ pub fn speak_text(text: String, volume: u16, rate: i32) {
 pub fn play_sound(path: String) {
     let audio = crate::audio::AudioManager::new();
     audio.play_file(&path);
+}
+
+// ── Hit-test commands ──────────────────────────────────────
+
+#[tauri::command]
+pub fn set_hit_rect(x: i32, y: i32, w: i32, h: i32) {
+    hit_test::set_pet_rect(x, y, w, h);
+}
+
+#[tauri::command]
+pub fn set_hit_enabled(on: bool) {
+    hit_test::set_enabled(on);
 }
 
  

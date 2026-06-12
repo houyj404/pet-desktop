@@ -2287,12 +2287,14 @@ dependencies = [
  "chrono",
  "env_logger",
  "log",
+ "raw-window-handle",
  "rusqlite",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tokio",
+ "windows",
 ]
 
 [[package]]
