@@ -1,0 +1,442 @@
+// ══════════════════════════════════════════════════════════════
+// 桌面小宠物 — pet.slint (Slint 1.16, in-out API)
+// ══════════════════════════════════════════════════════════════
+
+struct TaskItem {
+    id: int,
+    title: string,
+    due_label: string,
+    is_completed: bool,
+    is_urgent: bool,
+}
+
+component CtxItem {
+    in property <string> text;
+    callback clicked();
+    TouchArea {
+        clicked => { root.clicked(); }
+        HorizontalLayout {
+            padding: 8px;
+            Text { text: root.text; font-size: 12px; }
+        }
+    }
+}
+
+component TabBtn {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+    TouchArea {
+        clicked => { root.clicked(); }
+        HorizontalLayout {
+            padding: 8px;
+            Text { text: root.text; font-size: 12px; color: root.active ? #FF9F4A : #888; }
+        }
+    }
+}
+
+component RemindBtn {
+    in property <int> val;
+    in property <int> current;
+    callback clicked(int);
+    TouchArea {
+        clicked => { root.clicked(root.val); }
+        Rectangle {
+            border-radius: 4px; border-width: 1px;
+            border-color: root.val == root.current ? #FF9F4A : #ddd;
+            background: root.val == root.current ? #FFF0E0 : #fff;
+            HorizontalLayout { padding: 4px;
+                Text { text: root.val == 60 ? "1h" : root.val + "min"; font-size: 11px; }
+            }
+        }
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "桌面小宠物";
+    background: transparent;
+
+    // ── Window ──
+    property <bool> expanded: false;
+    width: expanded ? 500px : 140px;
+    height: expanded ? 520px : 180px;
+    animate width { duration: 250ms; easing: ease-in-out; }
+    animate height { duration: 250ms; easing: ease-in-out; }
+
+    // ── Modal flags (Slint-managed) ──
+    property <bool> task_modal_open: false;
+    property <bool> add_modal_open: false;
+    property <bool> settings_modal_open: false;
+    property <bool> ctx_menu_open: false;
+    property <int> ctx_x: 0;
+    property <int> ctx_y: 0;
+    property <bool> init_done: false;
+
+    // ── Rust-settable data (in-out = public setter) ──
+    in-out property <string> cat_state: "idle";
+    in-out property <string> bubble_text: "";
+    in-out property <bool> bubble_visible: false;
+    in-out property <[TaskItem]> popup_tasks: [];
+    in-out property <[TaskItem]> task_list: [];
+    in-out property <string> task_filter: "pending";
+
+    // ── Add-task form ──
+    in-out property <string> add_title: "";
+    in-out property <string> add_month: "6";
+    in-out property <string> add_day: "12";
+    in-out property <string> add_hour: "12";
+    in-out property <string> add_minute: "00";
+    in-out property <string> add_desc: "";
+    in-out property <int> add_remind: 15;
+
+    // ── Settings ──
+    in-out property <string> settings_panel: "general";
+    in-out property <bool> set_autostart: true;
+    in-out property <bool> set_edgesnap: true;
+    in-out property <int> set_opacity: 100;
+    in-out property <bool> set_hourly: true;
+    in-out property <int> set_h_start: 7;
+    in-out property <int> set_h_end: 22;
+    in-out property <bool> set_voice: true;
+    in-out property <int> set_volume: 80;
+
+    // ── Callbacks ──
+    callback window_init();
+    callback cat_clicked();
+    callback toggle_rest();
+    callback toggle_mute();
+    callback app_exit();
+    callback task_tab_changed(string);
+    callback task_complete(int, string);
+    callback task_delete(int);
+    callback add_saved();
+    callback save_settings();
+
+    // One-shot init
+    Timer {
+        interval: 500ms; running: !init_done;
+        triggered => { init_done = true; window_init(); }
+    }
+
+    // ── Context menu ──
+    if ctx_menu_open : Rectangle {
+        x: ctx_x * 1px; y: ctx_y * 1px;
+        background: #fff; border-radius: 8px; min-width: 150px;
+        VerticalLayout {
+            spacing: 0; padding: 4px;
+            CtxItem { text: "添加任务"; clicked => { ctx_menu_open = false; expanded = true; add_modal_open = true; } }
+            CtxItem { text: "查看全部任务"; clicked => { ctx_menu_open = false; expanded = true; task_modal_open = true; } }
+            Rectangle { width: 100%; height: 1px; background: #eee; }
+            CtxItem { text: "休息模式"; clicked => { ctx_menu_open = false; root.toggle_rest(); } }
+            CtxItem { text: "静音"; clicked => { ctx_menu_open = false; root.toggle_mute(); } }
+            Rectangle { width: 100%; height: 1px; background: #eee; }
+            CtxItem { text: "设置"; clicked => { ctx_menu_open = false; expanded = true; settings_modal_open = true; } }
+            CtxItem { text: "退出"; clicked => { root.app_exit(); } }
+        }
+    }
+
+    // ── Task modal ──
+    if task_modal_open : Rectangle {
+        x: 0px; y: 0px; width: 100%; height: 100%; background: #00000060;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 380px; height: 440px; background: #fff; border-radius: 8px;
+                VerticalLayout {
+                    HorizontalLayout {
+                        padding: 12px;
+                        Text { text: "我的任务"; font-weight: 700; font-size: 14px; }
+                        TouchArea {
+                            clicked => { task_modal_open = false; expanded = false; }
+                            HorizontalLayout { padding: 4px; Text { text: "X"; font-size: 18px; color: #999; } }
+                        }
+                    }
+                    HorizontalLayout {
+                        TabBtn { text: "未完成"; active: task_filter == "pending"; clicked => { task_filter = "pending"; root.task_tab_changed("pending"); } }
+                        TabBtn { text: "已完成"; active: task_filter == "completed"; clicked => { task_filter = "completed"; root.task_tab_changed("completed"); } }
+                        TabBtn { text: "全部"; active: task_filter == "all"; clicked => { task_filter = "all"; root.task_tab_changed("all"); } }
+                    }
+                    Rectangle { width: 100%; height: 1px; background: #eee; }
+                    VerticalLayout {
+                        for task in task_list : HorizontalLayout {
+                            spacing: 8px; padding: 6px;
+                            TouchArea {
+                                clicked => { if !task.is_completed { root.task_complete(task.id, task.title); } }
+                                Rectangle {
+                                    width: 16px; height: 16px; border-radius: 3px; border-width: 2px;
+                                    border-color: task.is_completed ? #FF9F4A : #ccc;
+                                    background: task.is_completed ? #FF9F4A : transparent;
+                                }
+                            }
+                            VerticalLayout {
+                                Text { text: task.title; font-size: 13px; color: task.is_completed ? #bbb : #333; }
+                                Text { text: task.due_label; font-size: 11px; color: task.is_urgent ? #E74C3C : #888; font-weight: task.is_urgent ? 700 : 400; }
+                            }
+                            if !task.is_completed : TouchArea {
+                                clicked => { root.task_delete(task.id); }
+                                HorizontalLayout { padding: 4px; Text { text: "X"; font-size: 16px; color: #ccc; } }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        padding: 10px;
+                        // Btn
+                        TouchArea {
+                            clicked => { task_modal_open = false; add_modal_open = true; }
+                            HorizontalLayout {
+                                padding: 6px;
+                                Rectangle { border-radius: 4px; border-width: 1px; border-color: #ddd; background: #fff;
+                                    Text { text: "+ 添加任务"; font-size: 12px; horizontal-alignment: center; }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Add task modal ──
+    if add_modal_open : Rectangle {
+        x: 0px; y: 0px; width: 100%; height: 100%; background: #00000060;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 320px; height: 340px; background: #fff; border-radius: 8px;
+                VerticalLayout {
+                    HorizontalLayout {
+                        padding: 12px;
+                        Text { text: "添加任务"; font-weight: 700; font-size: 14px; }
+                        TouchArea {
+                            clicked => { add_modal_open = false; expanded = false; }
+                            HorizontalLayout { padding: 4px; Text { text: "X"; font-size: 18px; color: #999; } }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 6px; padding: 12px;
+                        Text { text: "任务名称 *"; font-size: 12px; color: #888; }
+                        TextInput { text <=> add_title; }
+                        Text { text: "截止日期 (月/日)"; font-size: 12px; color: #888; }
+                        HorizontalLayout {
+                            spacing: 4px;
+                            TextInput { text <=> add_month; width: 40px; }
+                            Text { text: "月"; font-size: 12px; }
+                            TextInput { text <=> add_day; width: 40px; }
+                            Text { text: "日"; font-size: 12px; }
+                        }
+                        Text { text: "截止时间 (时/分)"; font-size: 12px; color: #888; }
+                        HorizontalLayout {
+                            spacing: 4px;
+                            TextInput { text <=> add_hour; width: 40px; }
+                            Text { text: "时"; font-size: 12px; }
+                            TextInput { text <=> add_minute; width: 40px; }
+                            Text { text: "分"; font-size: 12px; }
+                        }
+                        Text { text: "备注"; font-size: 12px; color: #888; }
+                        TextInput { text <=> add_desc; }
+                        Text { text: "提前提醒"; font-size: 12px; color: #888; }
+                        HorizontalLayout {
+                            spacing: 4px;
+                            RemindBtn { val: 5;  current: add_remind; clicked(v) => { add_remind = v; } }
+                            RemindBtn { val: 15; current: add_remind; clicked(v) => { add_remind = v; } }
+                            RemindBtn { val: 30; current: add_remind; clicked(v) => { add_remind = v; } }
+                            RemindBtn { val: 60; current: add_remind; clicked(v) => { add_remind = v; } }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px; padding: 10px;
+                        TouchArea {
+                            clicked => { add_modal_open = false; expanded = false; }
+                            HorizontalLayout {
+                                padding: 6px;
+                                Rectangle { border-radius: 4px; border-width: 1px; border-color: #ddd; background: #fff;
+                                    Text { text: "取消"; font-size: 12px; horizontal-alignment: center; }
+                                }
+                            }
+                        }
+                        TouchArea {
+                            clicked => { add_modal_open = false; expanded = false; root.add_saved(); }
+                            HorizontalLayout {
+                                padding: 6px;
+                                Rectangle { border-radius: 4px; background: #FF9F4A;
+                                    Text { text: "保存"; font-size: 12px; color: #fff; horizontal-alignment: center; }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Settings modal ──
+    if settings_modal_open : Rectangle {
+        x: 0px; y: 0px; width: 100%; height: 100%; background: #00000060;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 380px; height: 320px; background: #fff; border-radius: 8px;
+                VerticalLayout {
+                    HorizontalLayout {
+                        padding: 12px;
+                        Text { text: "设置"; font-weight: 700; font-size: 14px; }
+                        TouchArea {
+                            clicked => { settings_modal_open = false; expanded = false; root.save_settings(); }
+                            HorizontalLayout { padding: 4px; Text { text: "X"; font-size: 18px; color: #999; } }
+                        }
+                    }
+                    HorizontalLayout {
+                        TabBtn { text: "常规"; active: settings_panel == "general"; clicked => { settings_panel = "general"; } }
+                        TabBtn { text: "提醒"; active: settings_panel == "reminder"; clicked => { settings_panel = "reminder"; } }
+                        TabBtn { text: "宠物"; active: settings_panel == "pet"; clicked => { settings_panel = "pet"; } }
+                    }
+                    Rectangle { width: 100%; height: 1px; background: #eee; }
+
+                    if settings_panel == "general" : VerticalLayout {
+                        spacing: 4px; padding: 12px;
+                        HorizontalLayout { spacing: 8px; padding: 6px;
+                            TouchArea {
+                                clicked => { set_autostart = !set_autostart; }
+                                Rectangle { width: 18px; height: 18px; border-radius: 3px; border-width: 2px;
+                                    border-color: set_autostart ? #FF9F4A : #ccc;
+                                    background: set_autostart ? #FF9F4A : transparent; }
+                            }
+                            Text { text: "开机自启动"; font-size: 13px; vertical-alignment: center; }
+                        }
+                        HorizontalLayout { spacing: 8px; padding: 6px;
+                            TouchArea {
+                                clicked => { set_edgesnap = !set_edgesnap; }
+                                Rectangle { width: 18px; height: 18px; border-radius: 3px; border-width: 2px;
+                                    border-color: set_edgesnap ? #FF9F4A : #ccc;
+                                    background: set_edgesnap ? #FF9F4A : transparent; }
+                            }
+                            Text { text: "贴边吸附"; font-size: 13px; vertical-alignment: center; }
+                        }
+                        HorizontalLayout { spacing: 8px; padding: 6px;
+                            Text { text: "透明度"; font-size: 13px; vertical-alignment: center; }
+                            for pct in [30, 50, 70, 100]: Rectangle {
+                                border-radius: 3px; border-width: 1px;
+                                border-color: set_opacity == pct ? #FF9F4A : #ddd;
+                                background: set_opacity == pct ? #FFF0E0 : #fff;
+                                HorizontalLayout { padding: 4px;
+                                    TouchArea {
+                                        clicked => { set_opacity = pct; }
+                                        Text { text: pct + "%"; font-size: 11px; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if settings_panel == "reminder" : VerticalLayout {
+                        spacing: 4px; padding: 12px;
+                        HorizontalLayout { spacing: 8px; padding: 6px;
+                            TouchArea {
+                                clicked => { set_hourly = !set_hourly; }
+                                Rectangle { width: 18px; height: 18px; border-radius: 3px; border-width: 2px;
+                                    border-color: set_hourly ? #FF9F4A : #ccc;
+                                    background: set_hourly ? #FF9F4A : transparent; }
+                            }
+                            Text { text: "整点提醒"; font-size: 13px; vertical-alignment: center; }
+                        }
+                        HorizontalLayout { spacing: 8px; padding: 6px;
+                            Text { text: "开始"; font-size: 13px; }
+                            Text { text: "" + set_h_start + " 时"; font-size: 13px; }
+                            Text { text: "时"; font-size: 12px; }
+                        }
+                        HorizontalLayout { spacing: 8px; padding: 6px;
+                            Text { text: "结束"; font-size: 13px; }
+                            Text { text: "" + set_h_end + " 时"; font-size: 13px; }
+                            Text { text: "时"; font-size: 12px; }
+                        }
+                    }
+
+                    if settings_panel == "pet" : VerticalLayout {
+                        spacing: 4px; padding: 12px;
+                        HorizontalLayout { spacing: 8px; padding: 6px;
+                            TouchArea {
+                                clicked => { set_voice = !set_voice; }
+                                Rectangle { width: 18px; height: 18px; border-radius: 3px; border-width: 2px;
+                                    border-color: set_voice ? #FF9F4A : #ccc;
+                                    background: set_voice ? #FF9F4A : transparent; }
+                            }
+                            Text { text: "语音播报"; font-size: 13px; vertical-alignment: center; }
+                        }
+                        HorizontalLayout { spacing: 8px; padding: 6px;
+                            Text { text: "音量"; font-size: 13px; vertical-alignment: center; }
+                            for pct in [30, 50, 70, 100]: Rectangle {
+                                border-radius: 3px; border-width: 1px;
+                                border-color: set_volume == pct ? #FF9F4A : #ddd;
+                                background: set_volume == pct ? #FFF0E0 : #fff;
+                                HorizontalLayout { padding: 4px;
+                                    TouchArea {
+                                        clicked => { set_volume = pct; }
+                                        Text { text: pct + "%"; font-size: 11px; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Pet area ──
+    Rectangle {
+        x: 10px; y: 10px; width: 120px; height: 160px; background: transparent;
+
+        if bubble_visible : Rectangle {
+            x: -5px; y: -30px; min-width: 80px; height: 28px; background: #fff; border-radius: 8px;
+            HorizontalLayout { padding: 4px;
+                Text { text: bubble_text; font-size: 11px; color: #333; horizontal-alignment: center; }
+            }
+        }
+
+        // Menu button
+        TouchArea {
+            x: 100px; y: 0px; width: 20px; height: 20px;
+            clicked => {
+                ctx_x = 0; ctx_y = 20;
+                ctx_menu_open = !ctx_menu_open;
+            }
+            Rectangle {
+                width: 20px; height: 20px; border-radius: 10px;
+                background: ctx_menu_open ? #FF9F4A : #ffffff80;
+                Text { text: "☰"; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
+            }
+        }
+        
+
+        TouchArea {
+            width: 120px; height: 160px;
+            clicked => { root.cat_clicked(); }
+            double-clicked => { expanded = true; task_modal_open = true; }
+            Image {
+                width: 120px; height: 160px;
+                source: cat_state == "idle"     ? @image-url("../assets/cat_idle.png")
+                      : cat_state == "remind"   ? @image-url("../assets/cat_remind.png")
+                      : cat_state == "warning"  ? @image-url("../assets/cat_warning.png")
+                      : cat_state == "sad"      ? @image-url("../assets/cat_sad.png")
+                      : cat_state == "recover"  ? @image-url("../assets/cat_recover.png")
+                      : cat_state == "happy"    ? @image-url("../assets/cat_happy.png")
+                      : cat_state == "sleeping" ? @image-url("../assets/cat_sleeping.png")
+                      : @image-url("../assets/cat_idle.png");
+            }
+        }
+
+        // Hover popup
+        if popup_tasks.length > 0 : Rectangle {
+            x: 130px; y: -80px; width: 180px; background: #fff; border-radius: 8px;
+            VerticalLayout {
+                padding: 8px; spacing: 4px;
+                Text { text: "待办事项"; font-weight: 700; font-size: 12px; }
+                for task in popup_tasks : HorizontalLayout {
+                    spacing: 4px;
+                    Rectangle { width: 6px; height: 6px; border-radius: 3px; background: task.is_urgent ? #E74C3C : #888; }
+                    Text { text: task.title; font-size: 11px; color: #333; }
+                }
+            }
+        }
+    }
+}
